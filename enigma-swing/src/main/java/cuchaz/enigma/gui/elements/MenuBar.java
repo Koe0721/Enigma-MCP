@@ -27,6 +27,7 @@ import cuchaz.enigma.gui.ConnectionState;
 import cuchaz.enigma.gui.Gui;
 import cuchaz.enigma.gui.config.Decompiler;
 import cuchaz.enigma.gui.config.LookAndFeel;
+import cuchaz.enigma.gui.config.McpConfig;
 import cuchaz.enigma.gui.config.NetConfig;
 import cuchaz.enigma.gui.config.UiConfig;
 import cuchaz.enigma.gui.dialog.AboutDialog;
@@ -34,6 +35,7 @@ import cuchaz.enigma.gui.dialog.ChangeDialog;
 import cuchaz.enigma.gui.dialog.ConnectToServerDialog;
 import cuchaz.enigma.gui.dialog.CreateServerDialog;
 import cuchaz.enigma.gui.dialog.FontDialog;
+import cuchaz.enigma.gui.dialog.McpServerDialog;
 import cuchaz.enigma.gui.dialog.SearchDialog;
 import cuchaz.enigma.gui.dialog.StatsDialog;
 import cuchaz.enigma.gui.util.ExtensionFileFilter;
@@ -77,6 +79,11 @@ public class MenuBar {
 	private final JMenu collabMenu = new JMenu();
 	private final JMenuItem connectItem = new JMenuItem();
 	private final JMenuItem startServerItem = new JMenuItem();
+
+	private final JMenu mcpMenu = new JMenu();
+	private final JMenuItem mcpStartItem = new JMenuItem();
+	private final JMenuItem mcpStopItem = new JMenuItem();
+	private final JMenuItem mcpConfigureItem = new JMenuItem();
 
 	private final JMenu helpMenu = new JMenu();
 	private final JMenuItem aboutItem = new JMenuItem();
@@ -136,6 +143,12 @@ public class MenuBar {
 		this.collabMenu.add(this.startServerItem);
 		ui.add(this.collabMenu);
 
+		this.mcpMenu.add(this.mcpStartItem);
+		this.mcpMenu.add(this.mcpStopItem);
+		this.mcpMenu.addSeparator();
+		this.mcpMenu.add(this.mcpConfigureItem);
+		ui.add(this.mcpMenu);
+
 		this.helpMenu.add(this.aboutItem);
 		this.helpMenu.add(this.githubItem);
 		ui.add(this.helpMenu);
@@ -163,6 +176,9 @@ public class MenuBar {
 		this.searchFieldItem.addActionListener(_e -> this.onSearchClicked(SearchDialog.Type.FIELD));
 		this.connectItem.addActionListener(_e -> this.onConnectClicked());
 		this.startServerItem.addActionListener(_e -> this.onStartServerClicked());
+		this.mcpStartItem.addActionListener(_e -> this.onMcpStartClicked());
+		this.mcpStopItem.addActionListener(_e -> this.onMcpStopClicked());
+		this.mcpConfigureItem.addActionListener(_e -> this.onMcpConfigureClicked());
 		this.aboutItem.addActionListener(_e -> AboutDialog.show(this.gui.getFrame()));
 		this.githubItem.addActionListener(_e -> this.onGithubClicked());
 	}
@@ -186,6 +202,10 @@ public class MenuBar {
 		this.exportSourceItem.setEnabled(jarOpen);
 		this.exportJarItem.setEnabled(jarOpen);
 		this.statsItem.setEnabled(jarOpen);
+
+		boolean mcpRunning = this.gui.getController().isMcpRunning();
+		this.mcpStartItem.setEnabled(!mcpRunning);
+		this.mcpStopItem.setEnabled(mcpRunning);
 	}
 
 	public void retranslateUi() {
@@ -221,6 +241,11 @@ public class MenuBar {
 		this.collabMenu.setText(I18n.translate("menu.collab"));
 		this.connectItem.setText(I18n.translate("menu.collab.connect"));
 		this.startServerItem.setText(I18n.translate("menu.collab.server.start"));
+
+		this.mcpMenu.setText(I18n.translate("menu.mcp"));
+		this.mcpStartItem.setText(I18n.translate("menu.mcp.start"));
+		this.mcpStopItem.setText(I18n.translate("menu.mcp.stop"));
+		this.mcpConfigureItem.setText(I18n.translate("menu.mcp.configure"));
 
 		this.helpMenu.setText(I18n.translate("menu.help"));
 		this.aboutItem.setText(I18n.translate("menu.help.about"));
@@ -399,6 +424,34 @@ public class MenuBar {
 			JOptionPane.showMessageDialog(this.gui.getFrame(), e.toString(), I18n.translate("menu.collab.server.start.error"), JOptionPane.ERROR_MESSAGE);
 			this.gui.getController().disconnectIfConnected(null);
 		}
+	}
+
+	private void onMcpStartClicked() {
+		try {
+			this.gui.getController().startMcpServer(McpConfig.getPort(), McpConfig.isBindAll());
+		} catch (IOException e) {
+			JOptionPane.showMessageDialog(this.gui.getFrame(), e.toString(), I18n.translate("menu.mcp.start.error"), JOptionPane.ERROR_MESSAGE);
+		}
+
+		this.updateUiState();
+	}
+
+	private void onMcpStopClicked() {
+		this.gui.getController().stopMcpServer();
+		this.updateUiState();
+	}
+
+	private void onMcpConfigureClicked() {
+		McpServerDialog.Result result = McpServerDialog.show(this.gui.getFrame());
+
+		if (result == null) {
+			return;
+		}
+
+		McpConfig.setPort(result.getPort());
+		McpConfig.setAutoStart(result.isAutoStart());
+		McpConfig.setBindAll(result.isBindAll());
+		McpConfig.save();
 	}
 
 	private void onGithubClicked() {

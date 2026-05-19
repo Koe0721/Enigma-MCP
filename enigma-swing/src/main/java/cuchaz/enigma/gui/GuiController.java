@@ -60,6 +60,7 @@ import cuchaz.enigma.gui.config.LookAndFeel;
 import cuchaz.enigma.gui.config.NetConfig;
 import cuchaz.enigma.gui.config.UiConfig;
 import cuchaz.enigma.gui.dialog.ProgressDialog;
+import cuchaz.enigma.gui.mcp.McpHttpServer;
 import cuchaz.enigma.gui.newabstraction.EntryValidation;
 import cuchaz.enigma.gui.panels.EditorPanel;
 import cuchaz.enigma.gui.stats.StatsGenerator;
@@ -116,6 +117,8 @@ public class GuiController implements ClientPacketHandler, GuiView, DataInvalida
 
 	private EnigmaClient client;
 	private EnigmaServer server;
+
+	private McpHttpServer mcpServer;
 
 	private History<EntryReference<Entry<?>, Entry<?>>> referenceHistory;
 
@@ -649,6 +652,39 @@ public class GuiController implements ClientPacketHandler, GuiView, DataInvalida
 
 	public EnigmaServer getServer() {
 		return server;
+	}
+
+	public boolean isMcpRunning() {
+		return mcpServer != null && mcpServer.isRunning();
+	}
+
+	public int getMcpPort() {
+		return mcpServer != null ? mcpServer.getPort() : -1;
+	}
+
+	public void startMcpServer(int port, boolean bindAll) throws IOException {
+		if (mcpServer != null) {
+			return;
+		}
+
+		mcpServer = new McpHttpServer(gui, port, bindAll);
+
+		try {
+			mcpServer.start();
+		} catch (IOException e) {
+			mcpServer = null;
+			throw e;
+		}
+
+		gui.updateUiState();
+	}
+
+	public void stopMcpServer() {
+		if (mcpServer != null) {
+			mcpServer.stop();
+			mcpServer = null;
+			gui.updateUiState();
+		}
 	}
 
 	public void createClient(String username, String ip, int port, char[] password) throws IOException {

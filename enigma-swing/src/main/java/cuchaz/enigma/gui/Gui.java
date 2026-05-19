@@ -15,6 +15,7 @@ import java.awt.BorderLayout;
 import java.awt.Container;
 import java.awt.Point;
 import java.awt.event.ActionEvent;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
@@ -46,6 +47,7 @@ import org.jetbrains.annotations.Nullable;
 import cuchaz.enigma.Enigma;
 import cuchaz.enigma.analysis.EntryReference;
 import cuchaz.enigma.api.service.GuiService;
+import cuchaz.enigma.gui.config.McpConfig;
 import cuchaz.enigma.gui.config.Themes;
 import cuchaz.enigma.gui.config.UiConfig;
 import cuchaz.enigma.gui.dialog.JavadocDialog;
@@ -56,6 +58,7 @@ import cuchaz.enigma.gui.elements.EditorTabbedPane;
 import cuchaz.enigma.gui.elements.ImplementationsTree;
 import cuchaz.enigma.gui.elements.InheritanceTree;
 import cuchaz.enigma.gui.elements.MainWindow;
+import cuchaz.enigma.gui.elements.McpLogPanel;
 import cuchaz.enigma.gui.elements.MenuBar;
 import cuchaz.enigma.gui.elements.ValidatableUi;
 import cuchaz.enigma.gui.panels.DeobfPanel;
@@ -116,6 +119,8 @@ public class Gui {
 	private final JScrollPane messageScrollPane = new JScrollPane(this.messages);
 	private final JTextField chatBox = new JTextField();
 
+	private McpLogPanel mcpLogPanel;
+
 	private final JLabel connectionStatusLabel = new JLabel();
 
 	public final JFileChooser jarFileChooser = new JFileChooser();
@@ -132,6 +137,7 @@ public class Gui {
 		this.infoPanel = new IdentifierPanel(this);
 		this.obfPanel = new ObfPanel(this);
 		this.menuBar = new MenuBar(this);
+		this.mcpLogPanel = new McpLogPanel(this);
 		this.inheritanceTree = new InheritanceTree(this);
 		this.implementationsTree = new ImplementationsTree(this);
 		this.callsTree = new CallsTree(this);
@@ -145,6 +151,14 @@ public class Gui {
 
 		for (GuiService guiService : enigma.getServices().get(GuiService.TYPE)) {
 			guiService.onStart(controller);
+		}
+
+		if (McpConfig.isAutoStart()) {
+			try {
+				this.controller.startMcpServer(McpConfig.getPort(), McpConfig.isBindAll());
+			} catch (IOException e) {
+				System.err.println("Failed to auto-start MCP server: " + e);
+			}
 		}
 
 		this.mainWindow.setVisible(true);
@@ -191,6 +205,7 @@ public class Gui {
 		messagePanel.add(chatPanel, BorderLayout.SOUTH);
 		logTabs.addTab(I18n.translate("log_panel.users"), new JScrollPane(this.users));
 		logTabs.addTab(I18n.translate("log_panel.messages"), messagePanel);
+		logTabs.addTab(I18n.translate("log_panel.mcp"), this.mcpLogPanel);
 		logSplit.setResizeWeight(0.5);
 		logSplit.resetToPreferredSizes();
 		splitRight.setResizeWeight(1); // let the left side take all the slack
@@ -244,6 +259,10 @@ public class Gui {
 
 	public GuiController getController() {
 		return this.controller;
+	}
+
+	public McpLogPanel getMcpLogPanel() {
+		return this.mcpLogPanel;
 	}
 
 	public void setSingleClassTree(boolean singleClassTree) {
@@ -483,6 +502,8 @@ public class Gui {
 			searchDialog.dispose();
 		}
 
+		this.controller.stopMcpServer();
+
 		this.mainWindow.frame().dispose();
 		System.exit(0);
 	}
@@ -613,12 +634,14 @@ public class Gui {
 
 		connectionStatusLabel.setText(I18n.translate(connectionState == ConnectionState.NOT_CONNECTED ? "status.disconnected" : "status.connected"));
 
-		if (connectionState == ConnectionState.NOT_CONNECTED) {
-			logSplit.setLeftComponent(null);
-			splitRight.setRightComponent(tabs);
-		} else {
+		boolean showLogPanel = connectionState != ConnectionState.NOT_CONNECTED || this.controller.isMcpRunning();
+
+		if (showLogPanel) {
 			splitRight.setRightComponent(logSplit);
 			logSplit.setLeftComponent(tabs);
+		} else {
+			logSplit.setLeftComponent(null);
+			splitRight.setRightComponent(tabs);
 		}
 
 		splitRight.setDividerLocation(splitRight.getDividerLocation());
@@ -633,6 +656,8 @@ public class Gui {
 		this.tabs.setTitleAt(3, I18n.translate("info_panel.tree.calls"));
 		this.logTabs.setTitleAt(0, I18n.translate("log_panel.users"));
 		this.logTabs.setTitleAt(1, I18n.translate("log_panel.messages"));
+		this.logTabs.setTitleAt(2, I18n.translate("log_panel.mcp"));
+		this.mcpLogPanel.retranslateUi();
 		this.connectionStatusLabel.setText(I18n.translate(connectionState == ConnectionState.NOT_CONNECTED ? "status.disconnected" : "status.connected"));
 
 		this.updateUiState();

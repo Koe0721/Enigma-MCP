@@ -70,6 +70,11 @@
 	"menu.collab.server.start": "Start Server",
 	"menu.collab.server.start.error": "Error starting server",
 	"menu.collab.server.stop": "Stop Server",
+	"menu.mcp": "MCP",
+	"menu.mcp.start": "Start MCP Server",
+	"menu.mcp.stop": "Stop MCP Server",
+	"menu.mcp.configure": "Configure...",
+	"menu.mcp.start.error": "Error starting MCP server",
 	"menu.help": "Help",
 	"menu.help.about": "About",
 	"menu.help.about.title": "%s - About",
@@ -145,6 +150,11 @@
 
 	"log_panel.messages": "Messages",
 	"log_panel.users": "Users",
+	"log_panel.mcp": "MCP Log",
+	"mcp.log.column.time": "Time",
+	"mcp.log.column.operation": "Operation",
+	"mcp.log.column.class": "Class",
+	"mcp.log.column.detail": "Detail",
 
 	"progress.done": "Done!",
 	"progress.operation": "%s - Operation in progress",
@@ -192,6 +202,9 @@
 	"prompt.create_server.title": "Start Server",
 	"prompt.create_server.port": "Port:",
 	"prompt.create_server.confirm": "Start",
+	"prompt.mcp.port": "Port:",
+	"prompt.mcp.autostart": "Start automatically on launch:",
+	"prompt.mcp.bindall": "Listen on 0.0.0.0 (all interfaces):",
 	"prompt.password": "Password:",
 
 	"disconnect.disconnected": "Disconnected",

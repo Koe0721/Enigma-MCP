@@ -1,0 +1,119 @@
+package cuchaz.enigma.gui.elements;
+
+import java.awt.BorderLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingUtilities;
+import javax.swing.table.DefaultTableModel;
+
+import cuchaz.enigma.gui.Gui;
+import cuchaz.enigma.translation.representation.entry.ClassEntry;
+import cuchaz.enigma.utils.I18n;
+
+/**
+ * A docked panel (sibling of the collab Users/Messages tabs) that shows a table of
+ * MCP operations. Double-clicking a row navigates to the affected class.
+ */
+public class McpLogPanel extends JPanel {
+	private static final int MAX_ROWS = 1000;
+	private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
+	private final Gui gui;
+	private final DefaultTableModel model;
+	private final JTable table;
+	private final List<String> rowObfClasses = new ArrayList<>();
+
+	public McpLogPanel(Gui gui) {
+		super(new BorderLayout());
+		this.gui = gui;
+
+		this.model = new DefaultTableModel(0, 4) {
+			@Override
+			public boolean isCellEditable(int row, int column) {
+				return false;
+			}
+		};
+
+		this.table = new JTable(this.model);
+		this.table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		this.table.setAutoCreateRowSorter(true);
+		this.table.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if (e.getClickCount() == 2) {
+					onRowActivated();
+				}
+			}
+		});
+
+		retranslateUi();
+		this.add(new JScrollPane(this.table), BorderLayout.CENTER);
+	}
+
+	public final void retranslateUi() {
+		this.model.setColumnIdentifiers(new Object[]{
+				I18n.translate("mcp.log.column.time"),
+				I18n.translate("mcp.log.column.operation"),
+				I18n.translate("mcp.log.column.class"),
+				I18n.translate("mcp.log.column.detail"),
+		});
+	}
+
+	/**
+	 * Appends a log row. Safe to call from any thread.
+	 *
+	 * @param operation the MCP tool name
+	 * @param obfClass the affected obfuscated class full name, or {@code null}
+	 * @param detail a short result or error description
+	 */
+	public void log(String operation, String obfClass, String detail) {
+		SwingUtilities.invokeLater(() -> {
+			if (this.model.getRowCount() >= MAX_ROWS) {
+				this.model.removeRow(0);
+				this.rowObfClasses.remove(0);
+			}
+
+			this.model.addRow(new Object[]{LocalTime.now().format(TIME_FORMAT), operation, obfClass == null ? "" : obfClass, detail});
+			this.rowObfClasses.add(obfClass);
+
+			int last = this.model.getRowCount() - 1;
+			java.awt.Rectangle rect = this.table.getCellRect(last, 0, true);
+			this.table.scrollRectToVisible(rect);
+		});
+	}
+
+	private void onRowActivated() {
+		int viewRow = this.table.getSelectedRow();
+
+		if (viewRow < 0) {
+			return;
+		}
+
+		int modelRow = this.table.convertRowIndexToModel(viewRow);
+
+		if (modelRow < 0 || modelRow >= this.rowObfClasses.size()) {
+			return;
+		}
+
+		String obfClass = this.rowObfClasses.get(modelRow);
+
+		if (obfClass == null || obfClass.isEmpty() || this.gui.getController().getProject() == null) {
+			return;
+		}
+
+		try {
+			this.gui.getController().navigateTo(new ClassEntry(obfClass));
+		} catch (RuntimeException ignored) {
+			// invalid/unknown class reference, nothing to navigate to
+		}
+	}
+}
