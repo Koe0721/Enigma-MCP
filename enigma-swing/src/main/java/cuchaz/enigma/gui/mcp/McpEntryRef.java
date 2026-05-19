@@ -6,11 +6,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.google.gson.JsonObject;
+
 import cuchaz.enigma.EnigmaProject;
 import cuchaz.enigma.analysis.index.EntryIndex;
 import cuchaz.enigma.source.RenamableTokenType;
 import cuchaz.enigma.translation.TranslateResult;
 import cuchaz.enigma.translation.mapping.EntryRemapper;
+import cuchaz.enigma.translation.mapping.ResolutionStrategy;
 import cuchaz.enigma.translation.representation.AccessFlags;
 import cuchaz.enigma.translation.representation.TypeDescriptor;
 import cuchaz.enigma.translation.representation.entry.ClassEntry;
@@ -169,7 +172,74 @@ public final class McpEntryRef {
 		return (type == null ? RenamableTokenType.OBFUSCATED : type).name().toLowerCase(Locale.ROOT);
 	}
 
-	public static Map<String, Object> describe(EntryRemapper mapper, Entry<?> obf) {
+	private static String arg(JsonObject args, String key) {
+		return args != null && args.has(key) && !args.get(key).isJsonNull() ? args.get(key).getAsString() : null;
+	}
+
+	/**
+	 * Resolves the entry targeted by an MCP edit tool's arguments, following overrides
+	 * to the root declaration so the result matches where Enigma stores the mapping.
+	 *
+	 * @param project the loaded project
+	 * @param args the tool arguments (kind, class, name, desc, paramIndex)
+	 * @return the resolved obfuscated entry
+	 */
+	public static Entry<?> resolveTarget(EnigmaProject project, JsonObject args) {
+		String kind = arg(args, "kind");
+		String className = arg(args, "class");
+
+		if (kind == null || className == null) {
+			throw new McpException("Missing required argument: kind/class");
+		}
+
+		ClassEntry classEntry = resolveClass(project, className);
+		Entry<?> entry;
+
+		switch (kind.toLowerCase(Locale.ROOT)) {
+		case "class":
+			entry = classEntry;
+			break;
+		case "field":
+			entry = resolveField(project, classEntry, arg(args, "name"), arg(args, "desc"));
+			break;
+		case "method":
+			entry = resolveMethod(project, classEntry, arg(args, "name"), arg(args, "desc"));
+			break;
+		case "parameter": {
+			MethodEntry method = resolveMethod(project, classEntry, arg(args, "name"), arg(args, "desc"));
+			entry = resolveParameter(project, method, args.get("paramIndex").getAsInt());
+			break;
+		}
+		default:
+			throw new McpException("Unknown kind: " + kind + " (expected class, field, method or parameter)");
+		}
+
+		java.util.Collection<Entry<?>> resolved = project.getMapper().getObfResolver().resolveEntry(entry, ResolutionStrategy.RESOLVE_ROOT);
+		return resolved.isEmpty() ? entry : resolved.iterator().next();
+	}
+
+	/**
+	 * Like {@link #resolveTarget} but returns {@code null} instead of throwing,
+	 * for best-effort navigation in the log panel.
+	 *
+	 * @param project the loaded project, may be {@code null}
+	 * @param args the tool arguments
+	 * @return the resolved entry, or {@code null} if it cannot be resolved
+	 */
+	public static Entry<?> resolveTargetSafe(EnigmaProject project, JsonObject args) {
+		if (project == null) {
+			return null;
+		}
+
+		try {
+			return resolveTarget(project, args);
+		} catch (RuntimeException e) {
+			return null;
+		}
+	}
+
+	public static Map<String, Object> describe(EnigmaProject project, Entry<?> obf) {
+		EntryRemapper mapper = project.getMapper();
 		Map<String, Object> map = new LinkedHashMap<>();
 		TranslateResult<? extends Entry<?>> result = mapper.extendedDeobfuscate(obf);
 		Entry<?> deobf = result.getValue();
@@ -184,6 +254,7 @@ public final class McpEntryRef {
 			map.put("obfuscated", methodEntry.getName());
 			map.put("deobfuscated", deobf.getName());
 			map.put("descriptor", methodEntry.getDesc().toString());
+			map.put("constructor", methodEntry.isConstructor());
 		} else if (obf instanceof FieldEntry fieldEntry) {
 			map.put("kind", "field");
 			map.put("class", fieldEntry.getParent().getFullName());
@@ -201,6 +272,7 @@ public final class McpEntryRef {
 		String javadoc = deobf instanceof ParentedEntry<?> parented ? parented.getJavadocs() : mapper.getDeobfMapping(obf).javadoc();
 		map.put("javadoc", javadoc);
 		map.put("status", status(mapper, obf));
+		map.put("renamable", project.isRenamable(obf));
 		return map;
 	}
 }

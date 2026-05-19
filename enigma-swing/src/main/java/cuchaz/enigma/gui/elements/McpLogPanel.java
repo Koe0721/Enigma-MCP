@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import javax.swing.JPanel;
+import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
@@ -17,6 +18,7 @@ import javax.swing.table.DefaultTableModel;
 
 import cuchaz.enigma.gui.Gui;
 import cuchaz.enigma.translation.representation.entry.ClassEntry;
+import cuchaz.enigma.translation.representation.entry.Entry;
 import cuchaz.enigma.utils.I18n;
 
 /**
@@ -24,13 +26,15 @@ import cuchaz.enigma.utils.I18n;
  * MCP operations. Double-clicking a row navigates to the affected class.
  */
 public class McpLogPanel extends JPanel {
-	private static final int MAX_ROWS = 1000;
+	private static final int MAX_ROWS = 300;
 	private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
 	private final Gui gui;
 	private final DefaultTableModel model;
 	private final JTable table;
+	private final JScrollPane scrollPane;
 	private final List<String> rowObfClasses = new ArrayList<>();
+	private final List<Entry<?>> rowTargets = new ArrayList<>();
 
 	public McpLogPanel(Gui gui) {
 		super(new BorderLayout());
@@ -56,7 +60,8 @@ public class McpLogPanel extends JPanel {
 		});
 
 		retranslateUi();
-		this.add(new JScrollPane(this.table), BorderLayout.CENTER);
+		this.scrollPane = new JScrollPane(this.table);
+		this.add(this.scrollPane, BorderLayout.CENTER);
 	}
 
 	public final void retranslateUi() {
@@ -73,22 +78,38 @@ public class McpLogPanel extends JPanel {
 	 *
 	 * @param operation the MCP tool name
 	 * @param obfClass the affected obfuscated class full name, or {@code null}
+	 * @param navTarget the resolved entry to jump to on double-click, or {@code null}
 	 * @param detail a short result or error description
 	 */
-	public void log(String operation, String obfClass, String detail) {
+	public void log(String operation, String obfClass, Entry<?> navTarget, String detail) {
 		SwingUtilities.invokeLater(() -> {
+			boolean atBottom = isScrolledToBottom();
+
 			if (this.model.getRowCount() >= MAX_ROWS) {
 				this.model.removeRow(0);
 				this.rowObfClasses.remove(0);
+				this.rowTargets.remove(0);
 			}
 
 			this.model.addRow(new Object[]{LocalTime.now().format(TIME_FORMAT), operation, obfClass == null ? "" : obfClass, detail});
 			this.rowObfClasses.add(obfClass);
+			this.rowTargets.add(navTarget);
 
-			int last = this.model.getRowCount() - 1;
-			java.awt.Rectangle rect = this.table.getCellRect(last, 0, true);
-			this.table.scrollRectToVisible(rect);
+			if (atBottom) {
+				int last = this.model.getRowCount() - 1;
+				this.table.scrollRectToVisible(this.table.getCellRect(last, 0, true));
+			}
 		});
+	}
+
+	private boolean isScrolledToBottom() {
+		JScrollBar bar = this.scrollPane.getVerticalScrollBar();
+
+		if (bar == null || !bar.isVisible()) {
+			return true;
+		}
+
+		return bar.getValue() + bar.getVisibleAmount() >= bar.getMaximum() - 2;
 	}
 
 	private void onRowActivated() {
@@ -100,20 +121,26 @@ public class McpLogPanel extends JPanel {
 
 		int modelRow = this.table.convertRowIndexToModel(viewRow);
 
-		if (modelRow < 0 || modelRow >= this.rowObfClasses.size()) {
+		if (modelRow < 0 || modelRow >= this.rowTargets.size() || this.gui.getController().getProject() == null) {
 			return;
 		}
 
-		String obfClass = this.rowObfClasses.get(modelRow);
+		Entry<?> target = this.rowTargets.get(modelRow);
 
-		if (obfClass == null || obfClass.isEmpty() || this.gui.getController().getProject() == null) {
-			return;
+		if (target == null) {
+			String obfClass = this.rowObfClasses.get(modelRow);
+
+			if (obfClass == null || obfClass.isEmpty()) {
+				return;
+			}
+
+			target = new ClassEntry(obfClass);
 		}
 
 		try {
-			this.gui.getController().navigateTo(new ClassEntry(obfClass));
+			this.gui.getController().navigateTo(target);
 		} catch (RuntimeException ignored) {
-			// invalid/unknown class reference, nothing to navigate to
+			// invalid/unknown reference, nothing to navigate to
 		}
 	}
 }

@@ -7,7 +7,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import cuchaz.enigma.EnigmaProject;
 import cuchaz.enigma.gui.Gui;
+import cuchaz.enigma.translation.representation.entry.Entry;
 
 /**
  * Minimal JSON-RPC 2.0 / MCP dispatcher. Implements the subset of the Model Context
@@ -16,6 +18,23 @@ import cuchaz.enigma.gui.Gui;
 public final class McpProtocol {
 	private static final String SERVER_NAME = "enigma-mcp";
 	private static final String DEFAULT_PROTOCOL = "2024-11-05";
+	private static final String INSTRUCTIONS = """
+			This server edits the mappings of a Java deobfuscation project loaded in Enigma.
+
+			Renaming rules — rename / mark_deobfuscated / reset_obfuscated only work on \
+			renamable entries. Before calling them, check list_members: act ONLY on entries \
+			whose "renamable" is true. Never target:
+			- constructors / static initializers (obfuscated name "<init>" or "<clinit>", or \
+			"constructor": true);
+			- JDK Object overrides (equals, hashCode, toString, clone, finalize, getClass, \
+			notify, notifyAll, wait) and synthetic enum methods (values, valueOf);
+			- entries not present in the loaded jar.
+			Entries whose "status" is already "deobfuscated" or "unobfuscated" usually need no \
+			further action.
+
+			Names may be given in either the obfuscated or the deobfuscated namespace. For \
+			overloaded methods/fields pass "desc" to disambiguate. Prefer reading list_members \
+			or decompile_class for context before renaming.""";
 
 	private final Gson gson = new GsonBuilder().serializeNulls().create();
 	private final McpTools tools;
@@ -103,6 +122,7 @@ public final class McpProtocol {
 		result.addProperty("protocolVersion", protocol);
 		result.add("capabilities", capabilities);
 		result.add("serverInfo", serverInfo);
+		result.addProperty("instructions", INSTRUCTIONS);
 		return result;
 	}
 
@@ -110,17 +130,19 @@ public final class McpProtocol {
 		String name = params.has("name") ? params.get("name").getAsString() : "";
 		JsonObject arguments = params.has("arguments") && params.get("arguments").isJsonObject() ? params.getAsJsonObject("arguments") : new JsonObject();
 		String classArg = arguments.has("class") && !arguments.get("class").isJsonNull() ? arguments.get("class").getAsString() : null;
-		String obfClass = resolveObfClass(classArg);
+		EnigmaProject project = this.gui == null ? null : this.gui.getController().getProject();
+		Entry<?> navTarget = McpEntryRef.resolveTargetSafe(project, arguments);
+		String obfClass = navTarget != null ? navTarget.getContainingClass().getFullName() : resolveObfClass(classArg);
 
 		try {
 			Object toolResult = dispatch(name, arguments);
-			log(name, obfClass, summarize(name, arguments, toolResult), false);
+			log(name, obfClass, navTarget, summarize(name, arguments, toolResult), false);
 			return textContent(this.gson.toJson(toolResult), false);
 		} catch (McpException e) {
-			log(name, obfClass, e.getMessage(), true);
+			log(name, obfClass, navTarget, e.getMessage(), true);
 			throw e;
 		} catch (RuntimeException e) {
-			log(name, obfClass, String.valueOf(e), true);
+			log(name, obfClass, navTarget, String.valueOf(e), true);
 			throw e;
 		}
 	}
@@ -193,11 +215,11 @@ public final class McpProtocol {
 		}
 	}
 
-	private void log(String operation, String obfClass, String detail, boolean error) {
+	private void log(String operation, String obfClass, Entry<?> navTarget, String detail, boolean error) {
 		System.out.println("[MCP] " + operation + (obfClass == null ? "" : " " + obfClass) + (error ? " ERROR: " : " -> ") + detail);
 
 		if (this.gui != null) {
-			this.gui.getMcpLogPanel().log(operation, obfClass, (error ? "ERROR: " : "") + detail);
+			this.gui.getMcpLogPanel().log(operation, obfClass, navTarget, (error ? "ERROR: " : "") + detail);
 		}
 	}
 
@@ -236,9 +258,9 @@ public final class McpProtocol {
 		listMembers.add("class", simple("string", "Class name, obfuscated or deobfuscated"));
 		toolList.add(rawTool("list_members", "List all renamable fields, methods and parameters of a class, each marked deobfuscated/obfuscated/proposed/unobfuscated.", listMembers, new String[]{"class"}));
 
-		toolList.add(targetTool("rename", "Rename a class, field, method or parameter.", "newName", "The new deobfuscated name", new String[]{"kind", "class", "newName"}));
-		toolList.add(targetTool("mark_deobfuscated", "Mark a class/field/method/parameter as not needing deobfuscation (assigns its proposed or original name, same as the GUI right-click action).", null, null, new String[]{"kind", "class"}));
-		toolList.add(targetTool("reset_obfuscated", "Clear the mapping of a class/field/method/parameter, reverting it to obfuscated.", null, null, new String[]{"kind", "class"}));
+		toolList.add(targetTool("rename", "Rename a class, field, method or parameter. Only works on entries where list_members reports \"renamable\": true; never target constructors (<init>/<clinit>), JDK Object overrides or enum values/valueOf.", "newName", "The new deobfuscated name", new String[]{"kind", "class", "newName"}));
+		toolList.add(targetTool("mark_deobfuscated", "Mark a class/field/method/parameter as not needing deobfuscation (assigns its proposed or original name, same as the GUI right-click action). Only works on entries where list_members reports \"renamable\": true; never target constructors or non-renamable JDK/enum methods.", null, null, new String[]{"kind", "class"}));
+		toolList.add(targetTool("reset_obfuscated", "Clear the mapping of a class/field/method/parameter, reverting it to obfuscated. Only meaningful for renamable entries; never target constructors or non-renamable JDK/enum methods.", null, null, new String[]{"kind", "class"}));
 		toolList.add(targetTool("get_javadoc", "Get the javadoc attached to a class/field/method/parameter.", null, null, new String[]{"kind", "class"}));
 		toolList.add(targetTool("set_javadoc", "Set (or clear, when empty) the javadoc of a class/field/method/parameter.", "javadoc", "Javadoc text; empty string clears it", new String[]{"kind", "class"}));
 
