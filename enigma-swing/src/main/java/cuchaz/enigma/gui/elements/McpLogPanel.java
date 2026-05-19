@@ -1,13 +1,17 @@
 package cuchaz.enigma.gui.elements;
 
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JPanel;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
@@ -26,13 +30,17 @@ import cuchaz.enigma.utils.I18n;
  * MCP operations. Double-clicking a row navigates to the affected class.
  */
 public class McpLogPanel extends JPanel {
-	private static final int MAX_ROWS = 300;
+	private static final int MAX_ROWS = 1000;
 	private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+	private static final Set<String> READ_ONLY_OPS = Set.of(
+			"list_packages", "list_classes", "list_members", "search", "decompile_class", "get_javadoc", "ping");
 
 	private final Gui gui;
 	private final DefaultTableModel model;
 	private final JTable table;
 	private final JScrollPane scrollPane;
+	private final JCheckBox hideQueriesBox = new JCheckBox();
+	private final JButton clearButton = new JButton();
 	private final List<String> rowObfClasses = new ArrayList<>();
 	private final List<Entry<?>> rowTargets = new ArrayList<>();
 
@@ -59,8 +67,15 @@ public class McpLogPanel extends JPanel {
 			}
 		});
 
+		this.clearButton.addActionListener(e -> clear());
+
+		JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+		toolbar.add(this.clearButton);
+		toolbar.add(this.hideQueriesBox);
+
 		retranslateUi();
 		this.scrollPane = new JScrollPane(this.table);
+		this.add(toolbar, BorderLayout.NORTH);
 		this.add(this.scrollPane, BorderLayout.CENTER);
 	}
 
@@ -70,6 +85,16 @@ public class McpLogPanel extends JPanel {
 				I18n.translate("mcp.log.column.operation"),
 				I18n.translate("mcp.log.column.class"),
 				I18n.translate("mcp.log.column.detail"),
+		});
+		this.clearButton.setText(I18n.translate("mcp.log.clear"));
+		this.hideQueriesBox.setText(I18n.translate("mcp.log.hide_queries"));
+	}
+
+	public void clear() {
+		SwingUtilities.invokeLater(() -> {
+			this.model.setRowCount(0);
+			this.rowObfClasses.clear();
+			this.rowTargets.clear();
 		});
 	}
 
@@ -82,6 +107,10 @@ public class McpLogPanel extends JPanel {
 	 * @param detail a short result or error description
 	 */
 	public void log(String operation, String obfClass, Entry<?> navTarget, String detail) {
+		if (this.hideQueriesBox.isSelected() && READ_ONLY_OPS.contains(operation)) {
+			return;
+		}
+
 		SwingUtilities.invokeLater(() -> {
 			boolean atBottom = isScrolledToBottom();
 

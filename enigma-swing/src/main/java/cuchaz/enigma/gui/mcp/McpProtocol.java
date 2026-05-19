@@ -133,10 +133,11 @@ public final class McpProtocol {
 		EnigmaProject project = this.gui == null ? null : this.gui.getController().getProject();
 		Entry<?> navTarget = McpEntryRef.resolveTargetSafe(project, arguments);
 		String obfClass = navTarget != null ? navTarget.getContainingClass().getFullName() : resolveObfClass(classArg);
+		String oldName = currentName(project, navTarget);
 
 		try {
 			Object toolResult = dispatch(name, arguments);
-			log(name, obfClass, navTarget, summarize(name, arguments, toolResult), false);
+			log(name, obfClass, navTarget, buildDetail(name, arguments, toolResult, project, navTarget, oldName), false);
 			return textContent(this.gson.toJson(toolResult), false);
 		} catch (McpException e) {
 			log(name, obfClass, navTarget, e.getMessage(), true);
@@ -144,6 +145,52 @@ public final class McpProtocol {
 		} catch (RuntimeException e) {
 			log(name, obfClass, navTarget, String.valueOf(e), true);
 			throw e;
+		}
+	}
+
+	private String currentName(EnigmaProject project, Entry<?> navTarget) {
+		if (project == null || navTarget == null) {
+			return null;
+		}
+
+		try {
+			Entry<?> deobf = project.getMapper().deobfuscate(navTarget);
+			return deobf instanceof cuchaz.enigma.translation.representation.entry.ClassEntry classEntry ? classEntry.getFullName() : deobf.getName();
+		} catch (RuntimeException e) {
+			return null;
+		}
+	}
+
+	private String buildDetail(String tool, JsonObject arguments, Object result, EnigmaProject project, Entry<?> navTarget, String oldName) {
+		switch (tool) {
+		case "rename": {
+			String newName = arguments.has("newName") && !arguments.get("newName").isJsonNull() ? arguments.get("newName").getAsString() : "?";
+			return (oldName == null ? "?" : oldName) + " -> " + newName;
+		}
+		case "mark_deobfuscated": {
+			String newName = "?";
+
+			if (project != null && navTarget != null) {
+				String target = project.getMapper().getDeobfMapping(navTarget).targetName();
+				newName = target != null ? target : "?";
+			}
+
+			return (oldName == null ? "?" : oldName) + " -> " + newName;
+		}
+		case "reset_obfuscated":
+			return (oldName == null ? "?" : oldName) + " -> (obfuscated)";
+		case "set_javadoc": {
+			String text = arguments.has("javadoc") && !arguments.get("javadoc").isJsonNull() ? arguments.get("javadoc").getAsString() : "";
+			return text.isEmpty() ? "javadoc cleared" : "javadoc set";
+		}
+		case "save_mappings":
+			return "saved";
+		default:
+			if (result instanceof java.util.Map<?, ?> map && map.containsKey("count")) {
+				return "count=" + map.get("count");
+			}
+
+			return "ok";
 		}
 	}
 
@@ -189,18 +236,6 @@ public final class McpProtocol {
 		}
 
 		return toolResult;
-	}
-
-	private String summarize(String name, JsonObject arguments, Object result) {
-		if (arguments.has("newName") && !arguments.get("newName").isJsonNull()) {
-			return "-> " + arguments.get("newName").getAsString();
-		}
-
-		if (result instanceof java.util.Map<?, ?> map && map.containsKey("count")) {
-			return "count=" + map.get("count");
-		}
-
-		return "ok";
 	}
 
 	private String resolveObfClass(String classArg) {

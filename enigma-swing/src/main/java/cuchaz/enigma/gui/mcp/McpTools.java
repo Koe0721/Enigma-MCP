@@ -38,6 +38,13 @@ import cuchaz.enigma.utils.validation.ValidationContext;
  * the Swing thread so the tree, decompiler and collaboration server stay in sync.
  */
 public final class McpTools {
+	private static final int DECOMPILE_TIMEOUT_SECONDS = 10;
+	private static final java.util.concurrent.ExecutorService DECOMPILE_EXECUTOR = java.util.concurrent.Executors.newCachedThreadPool(runnable -> {
+		Thread thread = new Thread(runnable, "enigma-mcp-decompile");
+		thread.setDaemon(true);
+		return thread;
+	});
+
 	private final Gui gui;
 
 	public McpTools(Gui gui) {
@@ -337,9 +344,27 @@ public final class McpTools {
 				new SourceSettings(true, true)
 		);
 
-		Source raw = dc.getSource(obfClass.getFullName());
-		DecompiledClassSource decompiled = new DecompiledClassSource(obfClass, raw.index());
-		String source = decompiled.remapSource(project, project.getMapper().getDeobfuscator()).toString();
+		cuchaz.enigma.source.Decompiler finalDc = dc;
+		Decompiler finalDecompiler = decompiler;
+		java.util.concurrent.Future<String> future = DECOMPILE_EXECUTOR.submit(() -> {
+			Source raw = finalDc.getSource(obfClass.getFullName());
+			DecompiledClassSource decompiled = new DecompiledClassSource(obfClass, raw.index());
+			return decompiled.remapSource(project, project.getMapper().getDeobfuscator()).toString();
+		});
+
+		String source;
+
+		try {
+			source = future.get(DECOMPILE_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+		} catch (java.util.concurrent.TimeoutException e) {
+			future.cancel(true);
+			throw new McpException("Decompile timed out after " + DECOMPILE_TIMEOUT_SECONDS + "s with " + finalDecompiler.name + ". Retry with a different decompiler (e.g. CFR, PROCYON or BYTECODE).");
+		} catch (java.util.concurrent.ExecutionException e) {
+			throw new McpException("Decompile failed: " + (e.getCause() == null ? e : e.getCause()));
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new McpException("Decompile interrupted");
+		}
 
 		Map<String, Object> result = new LinkedHashMap<>();
 		result.put("class", McpEntryRef.describe(project, obfClass));

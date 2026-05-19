@@ -155,6 +155,8 @@
 	"mcp.log.column.operation": "Operation",
 	"mcp.log.column.class": "Class",
 	"mcp.log.column.detail": "Detail",
+	"mcp.log.clear": "Clear",
+	"mcp.log.hide_queries": "Hide queries",
 
 	"progress.done": "Done!",
 	"progress.operation": "%s - Operation in progress",

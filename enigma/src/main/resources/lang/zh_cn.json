@@ -49,6 +49,8 @@
 	"mcp.log.column.operation": "操作",
 	"mcp.log.column.class": "类",
 	"mcp.log.column.detail": "详情",
+	"mcp.log.clear": "清空",
+	"mcp.log.hide_queries": "隐藏只读查询",
 	"prompt.mcp.port": "端口：",
 	"prompt.mcp.autostart": "启动时自动开启：",
 	"prompt.mcp.bindall": "监听 0.0.0.0（所有网卡）：",
